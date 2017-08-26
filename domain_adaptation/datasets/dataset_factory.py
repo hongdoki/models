@@ -22,6 +22,7 @@ from __future__ import print_function
 import tensorflow as tf
 
 from slim.datasets import mnist
+from domain_adaptation.datasets import svhn_custom, mnist_custom
 from domain_adaptation.datasets import mnist_m
 
 slim = tf.contrib.slim
@@ -48,7 +49,8 @@ def get_dataset(dataset_name,
   Raises:
     ValueError: if `dataset_name` isn't recognized.
   """
-  dataset_name_to_module = {'mnist': mnist, 'mnist_m': mnist_m}
+  dataset_name_to_module = {'mnist': mnist, 'mnist_m': mnist_m,
+                            'svhn_custom': svhn_custom, 'mnist_custom':mnist_custom}
   if dataset_name not in dataset_name_to_module:
     raise ValueError('Name of dataset unknown %s.' % dataset_name)
 
