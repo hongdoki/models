@@ -83,6 +83,23 @@ def default_encoder(images, code_size, batch_norm_params=None,
   return end_points
 
 
+def svhn_model_encoder(images, code_size, batch_norm_params=None, weight_decay=1e-4):
+    """Encodes the given images to codes of the given size.
+
+      Args:
+        images: a tensor of size [batch_size, height, width, 1].
+        code_size: the number of hidden units in the code layer of the classifier.
+        batch_norm_params: a dictionary that maps batch norm parameter names to
+          values.
+        weight_decay: the value for the weight decay coefficient.
+
+      Returns:
+        end_points: the code of the input.
+    """
+    logits, code = svhn_model(images=images, code_size=code_size, weight_decay=weight_decay)
+    return code
+
+
 ################################################################################
 # DECODERS
 ################################################################################
@@ -232,9 +249,106 @@ def small_decoder(codes,
   return net
 
 
+def svhn_model_decoder(codes,
+                  height,
+                  width,
+                  channels,
+                  batch_norm_params=None,
+                  weight_decay=0.0):
+  """Decodes the codes to a fixed output size.
+
+  Args:
+    codes: a tensor of size [batch_size, code_size].
+    height: the height of the output images.
+    width: the width of the output images.
+    channels: the number of the output channels.
+    batch_norm_params: a dictionary that maps batch norm parameter names to
+      values.
+    weight_decay: the value for the weight decay coefficient.
+
+  Returns:
+    recons: the reconstruction tensor of shape [batch_size, height, width, 3].
+  """
+  with slim.arg_scope(
+          [slim.conv2d, slim.fully_connected],
+          activation_fn=tf.nn.elu,
+          weights_regularizer=slim.l2_regularizer(weight_decay)):
+      net = slim.fully_connected(codes, 48, scope='fc1')
+      batch_size = net.get_shape().as_list()[0]
+      net = tf.reshape(net, [batch_size, 4, 4, 3])
+      net = tf.image.resize_nearest_neighbor(net, [8, 8])
+      net = slim.conv2d(net, 128, [3, 3], scope='conv1_1')
+      net = slim.conv2d(net, 128, [3, 3], scope='conv1_2')
+      net = slim.conv2d(net, 128, [3, 3], scope='conv1_3')
+      net = tf.image.resize_nearest_neighbor(net, [16, 16])
+      net = slim.conv2d(net, 64, [3, 3], scope='conv2_1')
+      net = slim.conv2d(net, 64, [3, 3], scope='conv2_2')
+      net = slim.conv2d(net, 64, [3, 3], scope='conv2_3')
+      net = tf.image.resize_nearest_neighbor(net, [32, 32])
+      net = slim.conv2d(net, 32, [3, 3], scope='conv3_1')
+      net = slim.conv2d(net, 32, [3, 3], scope='conv3_2')
+      net = slim.conv2d(net, 3, [3, 3], scope='conv3_3')
+
+  return net
+
+
 ################################################################################
 # SHARED ENCODERS
 ################################################################################
+def svhn_model(images,
+               weight_decay=1e-4,
+               prefix='model',
+               num_classes=10,
+               code_size=128,
+               standardization=True,
+               **kwargs):
+  """Creates a convolution SVHN model.
+
+  Note that this model implements the architecture for SVHN proposed in:
+   P. Haeusser et al, Learning by Association A versatile semi-supervised traning method for neural networks, CVPR, 2017
+
+  Args:
+    images: the SVHN digits, a tensor of size [batch_size, 32, 32, 3].
+    weight_decay: the value for the weight decay coefficient.
+    prefix: name of the model to use when prefixing tags.
+    num_classes: the number of output classes to use.
+    **kwargs: Placeholder for keyword arguments used by other shared encoders.
+
+  Returns:
+    the output logits, a tensor of size [batch_size, num_classes].
+    a dictionary with key/values the layer names and tensors.
+  """
+  end_points = {}
+  if standardization:
+      mean = tf.reduce_mean(images, [1, 2], True)
+      std = tf.reduce_mean(tf.square(images - mean), [1, 2], True)
+      images = (images - mean) / (std + 1e-5)
+  with slim.arg_scope(
+          [slim.conv2d, slim.fully_connected],
+          activation_fn=tf.nn.elu,
+          weights_regularizer=slim.l2_regularizer(weight_decay)):
+      end_points['conv1_1'] = slim.conv2d(images, 32, [3, 3], scope='conv1_1')
+      end_points['conv1_2'] = slim.conv2d(end_points['conv1_1'], 32, [3, 3], scope='conv1_2')
+      end_points['conv1_3'] = slim.conv2d(end_points['conv1_2'], 32, [3, 3], scope='conv1_3')
+      end_points['pool1'] = slim.max_pool2d(end_points['conv1_3'], [2, 2], scope='pool1')  # 14
+      end_points['conv2_1'] = slim.conv2d(end_points['pool1'], 64, [3, 3], scope='conv2_1')
+      end_points['conv2_2'] = slim.conv2d(end_points['conv2_1'], 64, [3, 3], scope='conv2_2')
+      end_points['conv2_3'] = slim.conv2d(end_points['conv2_2'], 64, [3, 3], scope='conv2_3')
+      end_points['pool2'] = slim.max_pool2d(end_points['conv2_3'], [2, 2], scope='pool2')  # 7
+      end_points['conv3_1'] = slim.conv2d(end_points['pool2'], 128, [3, 3], scope='conv3_1')
+      end_points['conv3_2'] = slim.conv2d(end_points['conv3_1'], 128, [3, 3], scope='conv3_2')
+      end_points['conv3_3'] = slim.conv2d(end_points['conv3_2'], 128, [3, 3], scope='conv3_3')
+      end_points['pool3'] = slim.max_pool2d(end_points['conv3_3'], [2, 2], scope='pool3')  # 3
+      end_points['pool3_flatten'] = slim.flatten(end_points['pool3'], scope='flatten')
+
+
+      with slim.arg_scope([slim.fully_connected], normalizer_fn=None):
+          end_points['fc1'] = slim.fully_connected(end_points['pool3_flatten'], code_size, scope='fc1')
+          logits = slim.fully_connected(
+              end_points['fc1'], num_classes, activation_fn=None, scope='fc2')
+  return logits, end_points
+
+
 def dann_mnist(images,
                weight_decay=0.0,
                prefix='model',
