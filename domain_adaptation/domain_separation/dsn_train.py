@@ -137,9 +137,21 @@ tf.app.flags.DEFINE_string('recon_loss_name', 'sum_of_pairwise_squares',
 tf.app.flags.DEFINE_string('basic_tower', 'pose_mini',
                            'The basic tower building block.')
 
+tf.app.flags.DEFINE_string('tinydb_path', './dsn_result.json',
+                           'The path for experiment result json file')
+
+
 def provide_batch_fn():
   """ The provide_batch function to use. """
   return dataset_factory.provide_batch
+
+
+def insert_hyper_params_into_tinydb(flags_t):
+    from tinydb import TinyDB
+    db = TinyDB(flags_t.tinydb_path)
+    table = db.table('lba-hyper-params')
+    table.insert(flags_t.__flags)
+
 
 def main(_):
   model_params = {
@@ -159,6 +171,9 @@ def main(_):
       'ps_tasks': FLAGS.ps_tasks,
       'task': FLAGS.task,
   }
+
+  insert_hyper_params_into_tinydb(FLAGS)
+
   g = tf.Graph()
   with g.as_default():
     with tf.device(tf.train.replica_device_setter(FLAGS.ps_tasks)):
