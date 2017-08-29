@@ -15,7 +15,7 @@ slim = tf.contrib.slim
 
 _FILE_PATTERN = 'target_mnist_%s.tfrecords'
 
-_SPLITS_TO_SIZES = {'train': 61048, 'val': 12209}
+_SPLITS_TO_SIZES = {'train': 54000, 'val': 6000, 'test': 10000}
 
 _NUM_CLASSES = 10
 

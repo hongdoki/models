@@ -15,7 +15,7 @@ slim = tf.contrib.slim
 
 _FILE_PATTERN = 'source_svhn_%s.tfrecords'
 
-_SPLITS_TO_SIZES = {'train': 61048, 'val': 12209}
+_SPLITS_TO_SIZES = {'train': 65932, 'val': 7325}
 
 _NUM_CLASSES = 10
 
