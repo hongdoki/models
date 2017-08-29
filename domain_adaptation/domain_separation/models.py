@@ -96,7 +96,7 @@ def svhn_model_encoder(images, code_size, batch_norm_params=None, weight_decay=1
       Returns:
         end_points: the code of the input.
     """
-    logits, code = svhn_model(images=images, code_size=code_size, weight_decay=weight_decay)
+    _, code = svhn_model(images=images, code_size=code_size, weight_decay=weight_decay, encoder=True)
     return code
 
 
@@ -301,6 +301,7 @@ def svhn_model(images,
                num_classes=10,
                code_size=128,
                standardization=True,
+               encoder=False,
                **kwargs):
   """Creates a convolution SVHN model.
 
@@ -344,9 +345,12 @@ def svhn_model(images,
 
       with slim.arg_scope([slim.fully_connected], normalizer_fn=None):
           end_points['fc1'] = slim.fully_connected(end_points['pool3_flatten'], code_size, scope='fc1')
-          logits = slim.fully_connected(
-              end_points['fc1'], num_classes, activation_fn=None, scope='fc2')
-  return logits, end_points
+          if not encoder:
+              logits = slim.fully_connected(
+                  end_points['fc1'], num_classes, activation_fn=None, scope='fc2')
+              return logits, end_points
+          else:
+              return None, end_points
 
 
 def dann_mnist(images,
