@@ -84,7 +84,7 @@ def default_encoder(images, code_size, batch_norm_params=None,
 
 
 def svhn_model_encoder(images, code_size, batch_norm_params=None, weight_decay=1e-4):
-    """Encodes the given images to codes of the given size.
+    """Encodes the given images to codes of the given size using svhn model.
 
       Args:
         images: a tensor of size [batch_size, height, width, 1].
@@ -99,6 +99,22 @@ def svhn_model_encoder(images, code_size, batch_norm_params=None, weight_decay=1
     _, code = svhn_model(images=images, code_size=code_size, weight_decay=weight_decay, encoder=True)
     return code
 
+
+def suanet_encoder(images, code_size, batch_norm_params=None, weight_decay=1e-4):
+    """Encodes the given images to codes of the given size using SuaNet.
+
+          Args:
+            images: a tensor of size [batch_size, height, width, 1].
+            code_size: the number of hidden units in the code layer of the classifier.
+            batch_norm_params: a dictionary that maps batch norm parameter names to
+              values.
+            weight_decay: the value for the weight decay coefficient.
+
+          Returns:
+            end_points: the code of the input.
+        """
+    _, code = suanet(images=images, code_size=code_size, weight_decay=weight_decay, encoder=True)
+    return code
 
 ################################################################################
 # DECODERS
@@ -255,7 +271,7 @@ def svhn_model_decoder(codes,
                   channels,
                   batch_norm_params=None,
                   weight_decay=0.0):
-  """Decodes the codes to a fixed output size.
+  """Decodes the codes to a fixed output size using svhn_model.
 
   Args:
     codes: a tensor of size [batch_size, code_size].
@@ -291,6 +307,54 @@ def svhn_model_decoder(codes,
 
   return net
 
+def suanet_decoder(codes,
+                  height,
+                  width,
+                  channels,
+                  batch_norm_params=None,
+                  weight_decay=0.0):
+  """Decodes the codes to a fixed output size using SuaNet.
+
+  Args:
+    codes: a tensor of size [batch_size, code_size].
+    height: the height of the output images.
+    width: the width of the output images.
+    channels: the number of the output channels.
+    batch_norm_params: a dictionary that maps batch norm parameter names to
+      values.
+    weight_decay: the value for the weight decay coefficient.
+
+  Returns:
+    recons: the reconstruction tensor of shape [batch_size, height, width, 3].
+  """
+  from tensorflow.contrib import layers
+  from tensorflow.contrib.framework.python.ops import arg_scope
+  from tensorflow.contrib.layers.python.layers import layers as layers_lib
+  from tensorflow.contrib.layers.python.layers import regularizers
+  from tensorflow.python.ops import init_ops
+  from tensorflow.python.ops import nn_ops
+
+  def suanet_v2_arg_scope(_weight_decay=weight_decay):
+      with arg_scope(
+              [layers.conv2d, layers_lib.fully_connected],
+              activation_fn=nn_ops.relu,
+              biases_initializer=init_ops.constant_initializer(0.1),
+              weights_regularizer=regularizers.l2_regularizer(_weight_decay)):
+          with arg_scope([layers.conv2d], padding='SAME'):
+              with arg_scope([layers_lib.max_pool2d], padding='SAME') as arg_sc:
+                  return arg_sc
+
+  with slim.arg_scope(suanet_v2_arg_scope()):
+      batch_size = codes.get_shape().as_list()[0]
+      net = tf.reshape(codes, [batch_size, 1, 1, 256])
+      net = tf.image.resize_nearest_neighbor(net, [10, 10])
+      net = slim.conv2d(net, 256, [3, 3], scope='conv1_1')
+      net = tf.image.resize_nearest_neighbor(net, [20, 20])
+      net = slim.conv2d(net, 96, [5, 5], scope='conv1_2')
+      net = tf.image.resize_nearest_neighbor(net, [height, width])
+      net = slim.conv2d(net, channels, [11, 11], scope='conv1_3')
+      # net = tf.image.resize_nearest_neighbor(net, [256, 256])
+      return net
 
 ################################################################################
 # SHARED ENCODERS
@@ -347,7 +411,8 @@ def svhn_model(images,
           end_points['fc1'] = slim.fully_connected(end_points['pool3_flatten'], code_size, scope='fc1')
           if not encoder:
               logits = slim.fully_connected(
-                  end_points['fc1'], num_classes, activation_fn=None, scope='fc2')
+                  end_points['fc1'], num_classes, activation_fn=None, scope='fc2',
+                  weights_regularizer=slim.l2_regularizer(weight_decay))
               return logits, end_points
           else:
               return None, end_points
@@ -559,3 +624,80 @@ def dsn_cropped_linemod(images,
   end_points['quaternion_pred'] = predicted_quaternion
 
   return logits, end_points
+
+
+def suanet(images,
+           num_classes=10,
+           encoder=False,
+           weight_decay=1e-4,
+           prefix='model',
+           code_size=256,
+           is_training=True,
+           augmentation_function=None,
+           img_shape=None,
+           new_shape=None,
+           image_summary=False):
+    """model based on AlexNet with fewer parameter (designed by kilho kim)"""
+
+    from tensorflow.contrib import layers
+    from tensorflow.contrib.framework.python.ops import arg_scope
+    from tensorflow.contrib.layers.python.layers import layers as layers_lib
+    from tensorflow.contrib.layers.python.layers import regularizers
+    from tensorflow.python.ops import init_ops
+    from tensorflow.python.ops import nn_ops
+    from tensorflow.python.ops import variable_scope
+
+    def suanet_v2_arg_scope(_weight_decay=weight_decay):
+        with arg_scope(
+                [layers.conv2d, layers_lib.fully_connected],
+                activation_fn=nn_ops.relu,
+                biases_initializer=init_ops.constant_initializer(0.1),
+                weights_regularizer=regularizers.l2_regularizer(_weight_decay)):
+            with arg_scope([layers.conv2d], padding='SAME'):
+                with arg_scope([layers_lib.max_pool2d], padding='SAME') as arg_sc:
+                    return arg_sc
+
+    def suanet_v2(inputs,
+                   is_training=True,
+                   emb_size=256,
+                   scope='suanet_v2'):
+
+        inputs = tf.cast(inputs, tf.float32)
+
+        net = inputs
+        mean = tf.reduce_mean(net, [1, 2], True)
+        std = tf.reduce_mean(tf.square(net - mean), [1, 2], True)
+        net = (net - mean) / (std + 1e-5)
+        inputs = net
+
+        with variable_scope.variable_scope(scope, 'suanet_v2', [inputs]) as sc:
+            end_points_collection = sc.original_name_scope + '_end_points'
+            end_points = {}
+            # Collect outputs for conv2d, fully_connected and max_pool2d.
+            with arg_scope(
+                    [layers.conv2d, layers_lib.fully_connected, layers_lib.max_pool2d],
+                    outputs_collections=[end_points_collection]):
+                end_points['conv1'] = layers.conv2d(inputs, 96, [11, 11], 4, scope='conv1')
+                end_points['pool1'] = layers_lib.max_pool2d(end_points['conv1'], [3, 3], 2, scope='pool1')
+                end_points['conv2'] = layers.conv2d(end_points['pool1'], 256, [5, 5], scope='conv2')
+                end_points['pool2'] = layers_lib.max_pool2d(end_points['conv2'], [3, 3], 2, scope='pool2')
+                end_points['conv3'] = layers.conv2d(end_points['pool2'], emb_size, [3, 3], scope='conv3')
+                filter_n_stride_height = end_points['conv3'].get_shape()[0]
+                filter_n_stride_width = end_points['conv3'].get_shape()[1]
+                end_points['pool3'] = layers_lib.max_pool2d(end_points['conv3'],
+                                                            [filter_n_stride_height, filter_n_stride_width],
+                                                            [filter_n_stride_height, filter_n_stride_width],
+                                                            scope='pool3')
+                end_points['flatten'] = slim.flatten(end_points['pool3'], scope='flatten')
+
+        return end_points
+
+    with slim.arg_scope(suanet_v2_arg_scope()):
+        if encoder:
+            return None, suanet_v2(images, is_training, code_size)
+        else:
+            end_points = suanet_v2(images, is_training, code_size)
+            logits = slim.fully_connected(
+                  end_points['flatten'], num_classes, weights_regularizer=slim.l2_regularizer(weight_decay)
+                ,activation_fn=None, scope='fc1')
+            return logits, end_points
