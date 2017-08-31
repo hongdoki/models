@@ -140,6 +140,9 @@ tf.app.flags.DEFINE_string('basic_tower', 'pose_mini',
 tf.app.flags.DEFINE_string('tinydb_path', './dsn_result.json',
                            'The path for experiment result json file')
 
+tf.app.flags.DEFINE_string('note', '',
+                           'for any comment')
+
 
 def provide_batch_fn():
   """ The provide_batch function to use. """
