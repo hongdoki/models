@@ -99,9 +99,14 @@ def create_model(source_images, source_labels, domain_selection_mask,
     target_logits, target_endpoints = network(
         target_images, weight_decay=params['weight_decay'], prefix='target')
 
-  # Plot target accuracy of the train set.
+  # Plot target accuracy, auc of the train set.
   target_accuracy = utils.accuracy(
       tf.argmax(target_logits, 1), tf.argmax(target_labels['classes'], 1))
+  if num_classes == 2:
+    score = tf.nn.softmax(target_logits)[:, 1]
+    target_auc = tf.metrics.auc(tf.argmax(target_labels['classes'], 1), score)
+    tf.summary.scalar('eval/Target AUC', target_auc[1])
+
 
   if 'quaternions' in target_labels:
     target_quaternion_loss = losses.log_quaternion_loss(
