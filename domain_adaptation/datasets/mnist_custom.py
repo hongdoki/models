@@ -1,4 +1,4 @@
-"""Provides data for the svhn dataset from npy file.
+"""Provides data for the custom mnist dataset.
 """
 
 from __future__ import absolute_import
