@@ -168,6 +168,66 @@ def large_decoder(codes,
   return net
 
 
+def larger_256_decoder(codes,
+                       height,
+                       width,
+                       channels,
+                       batch_norm_params=None,
+                       weight_decay=0.0):
+  """Decodes the codes to a fixed output size.
+
+  Args:
+    codes: a tensor of size [batch_size, code_size].
+    height: the height of the output images.
+    width: the width of the output images.
+    channels: the number of the output channels.
+    batch_norm_params: a dictionary that maps batch norm parameter names to
+      values.
+    weight_decay: the value for the weight decay coefficient.
+
+  Returns:
+    recons: the reconstruction tensor of shape [batch_size, height, width, 3].
+  """
+  with slim.arg_scope(
+      [slim.conv2d, slim.fully_connected],
+      weights_regularizer=slim.l2_regularizer(weight_decay),
+      activation_fn=tf.nn.relu,
+      normalizer_fn=slim.batch_norm,
+      normalizer_params=batch_norm_params):
+    net = slim.fully_connected(codes, 600, scope='fc1')
+    batch_size = net.get_shape().as_list()[0]
+    net = tf.reshape(net, [batch_size, 10, 10, 6])
+
+    net = slim.conv2d(net, 32, [3, 3], scope='conv1_1')
+    net = slim.conv2d(net, 32, [3, 3], scope='conv1_2')
+
+    net = tf.image.resize_nearest_neighbor(net, (16, 16))
+
+    net = slim.conv2d(net, 32, [3, 3], scope='conv2_1')
+    net = slim.conv2d(net, 32, [3, 3], scope='conv2_2')
+
+    net = tf.image.resize_nearest_neighbor(net, (32, 32))
+    net = slim.conv2d(net, 32, [3, 3], scope='conv3_1')
+    net = slim.conv2d(net, 32, [3, 3], scope='conv3_2')
+
+    net = tf.image.resize_nearest_neighbor(net, (64, 64))
+
+    net = slim.conv2d(net, 32, [3, 3], scope='conv4_1')
+    net = slim.conv2d(net, 32, [3, 3], scope='conv4_2')
+
+    net = tf.image.resize_nearest_neighbor(net, (128, 128))
+
+    net = slim.conv2d(net, 32, [3, 3], scope='conv5_1')
+    net = slim.conv2d(net, 32, [3, 3], scope='conv5_2')
+
+    output_size = [height, width]
+    net = tf.image.resize_nearest_neighbor(net, output_size)
+
+    with slim.arg_scope([slim.conv2d], kernel_size=[3, 3]):
+      net = slim.conv2d(net, channels, activation_fn=None, scope='conv6_1')
+
+  return net
+
 def gtsrb_decoder(codes,
                   height,
                   width,
@@ -307,54 +367,6 @@ def svhn_model_decoder(codes,
 
   return net
 
-def suanet_decoder(codes,
-                  height,
-                  width,
-                  channels,
-                  batch_norm_params=None,
-                  weight_decay=0.0):
-  """Decodes the codes to a fixed output size using SuaNet.
-
-  Args:
-    codes: a tensor of size [batch_size, code_size].
-    height: the height of the output images.
-    width: the width of the output images.
-    channels: the number of the output channels.
-    batch_norm_params: a dictionary that maps batch norm parameter names to
-      values.
-    weight_decay: the value for the weight decay coefficient.
-
-  Returns:
-    recons: the reconstruction tensor of shape [batch_size, height, width, 3].
-  """
-  from tensorflow.contrib import layers
-  from tensorflow.contrib.framework.python.ops import arg_scope
-  from tensorflow.contrib.layers.python.layers import layers as layers_lib
-  from tensorflow.contrib.layers.python.layers import regularizers
-  from tensorflow.python.ops import init_ops
-  from tensorflow.python.ops import nn_ops
-
-  def suanet_v2_arg_scope(_weight_decay=weight_decay):
-      with arg_scope(
-              [layers.conv2d, layers_lib.fully_connected],
-              activation_fn=nn_ops.relu,
-              biases_initializer=init_ops.constant_initializer(0.1),
-              weights_regularizer=regularizers.l2_regularizer(_weight_decay)):
-          with arg_scope([layers.conv2d], padding='SAME'):
-              with arg_scope([layers_lib.max_pool2d], padding='SAME') as arg_sc:
-                  return arg_sc
-
-  with slim.arg_scope(suanet_v2_arg_scope()):
-      batch_size = codes.get_shape().as_list()[0]
-      net = tf.reshape(codes, [batch_size, 1, 1, 256])
-      net = tf.image.resize_nearest_neighbor(net, [10, 10])
-      net = slim.conv2d(net, 256, [3, 3], scope='conv1_1')
-      net = tf.image.resize_nearest_neighbor(net, [20, 20])
-      net = slim.conv2d(net, 96, [5, 5], scope='conv1_2')
-      net = tf.image.resize_nearest_neighbor(net, [height, width])
-      net = slim.conv2d(net, channels, [11, 11], scope='conv1_3')
-      # net = tf.image.resize_nearest_neighbor(net, [256, 256])
-      return net
 
 ################################################################################
 # SHARED ENCODERS
@@ -651,7 +663,7 @@ def suanet(images,
         with arg_scope(
                 [layers.conv2d, layers_lib.fully_connected],
                 activation_fn=nn_ops.relu,
-                biases_initializer=init_ops.constant_initializer(0.1),
+                biases_initializer=init_ops.glorot_normal_initializer(),
                 weights_regularizer=regularizers.l2_regularizer(_weight_decay)):
             with arg_scope([layers.conv2d], padding='SAME'):
                 with arg_scope([layers_lib.max_pool2d], padding='SAME') as arg_sc:
