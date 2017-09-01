@@ -95,7 +95,7 @@ def main(_):
     # Define the model:
     with tf.variable_scope('towers'):
       basic_tower = getattr(models, FLAGS.basic_tower)
-      predictions, endpoints = basic_tower(
+      logits, endpoints = basic_tower(
           images,
           num_classes=num_classes,
           is_training=False,
@@ -116,9 +116,9 @@ def main(_):
       metric_names_to_values['Quaternion Loss'] = quaternion_loss
 
     accuracy = tf.contrib.metrics.streaming_accuracy(
-        tf.argmax(predictions, 1), tf.argmax(labels['classes'], 1))
+        tf.argmax(logits, 1), tf.argmax(labels['classes'], 1))
 
-    predictions = tf.argmax(predictions, 1)
+    predictions = tf.argmax(logits, 1)
     labels = tf.argmax(labels['classes'], 1)
     metric_names_to_values['Accuracy'] = accuracy
 
@@ -131,6 +131,9 @@ def main(_):
         name = 'PR/Recall_{}'.format(i)
         metric_names_to_values[name] = slim.metrics.streaming_recall(
             tf.gather(index_map, predictions), tf.gather(index_map, labels))
+        name = 'AUC_{}'.format(i)
+        metric_names_to_values[name] = slim.metrics.streaming_auc(tf.nn.softmax(logits)[:, i],
+                                                                  tf.gather(index_map, labels))
 
     names_to_values, names_to_updates = slim.metrics.aggregate_metric_map(
         metric_names_to_values)
