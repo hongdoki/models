@@ -56,6 +56,7 @@ def dsn_loss_coefficient(params):
 # MODEL CREATION
 ################################################################################
 def create_model(source_images, source_labels, domain_selection_mask,
+                 source_val_images, source_val_labels,
                  target_images, target_labels, similarity_loss, params,
                  basic_tower_name):
   """Creates a DSN model.
@@ -96,13 +97,22 @@ def create_model(source_images, source_labels, domain_selection_mask,
     return
 
   with tf.variable_scope('towers', reuse=True):
+    source_val_logits, source_val_endpoints = network(source_val_images, weight_decay=params['weight_decay'],
+                                                      prefix='source_val')
     target_logits, target_endpoints = network(
         target_images, weight_decay=params['weight_decay'], prefix='target')
 
+
   # Plot target accuracy, auc of the train set.
-  target_accuracy = utils.accuracy(
-      tf.argmax(target_logits, 1), tf.argmax(target_labels['classes'], 1))
+  source_val_accuracy = utils.accuracy(tf.argmax(source_val_logits, 1), tf.argmax(source_val_labels['classes'], 1))
+  tf.summary.scalar('eval/Source validation accuracy', source_val_accuracy)
+  target_accuracy = utils.accuracy(tf.argmax(target_logits, 1), tf.argmax(target_labels['classes'], 1))
+  tf.summary.scalar('eval/Target accuracy', target_accuracy)
+
   if num_classes == 2:
+    score_val = tf.nn.softmax(source_val_logits)[:, 1]
+    source_val_auc = tf.metrics.auc(tf.argmax(source_val_labels['classes'], 1), score_val)
+    tf.summary.scalar('eval/Source validation AUC', source_val_auc[1])
     score = tf.nn.softmax(target_logits)[:, 1]
     target_auc = tf.metrics.auc(tf.argmax(target_labels['classes'], 1), score)
     tf.summary.scalar('eval/Target AUC', target_auc[1])
@@ -114,7 +124,6 @@ def create_model(source_images, source_labels, domain_selection_mask,
         params)
     tf.summary.scalar('eval/Target quaternions', target_quaternion_loss)
 
-  tf.summary.scalar('eval/Target accuracy', target_accuracy)
 
   source_shared = source_endpoints[params['layers_to_regularize']]
   target_shared = target_endpoints[params['layers_to_regularize']]

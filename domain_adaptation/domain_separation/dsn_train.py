@@ -184,6 +184,9 @@ def main(_):
       source_images, source_labels = provide_batch_fn()(
           FLAGS.source_dataset, 'train', FLAGS.dataset_dir, FLAGS.num_readers,
           FLAGS.batch_size, FLAGS.num_preprocessing_threads)
+      source_val_images, source_val_labels = provide_batch_fn()(
+          FLAGS.source_dataset, 'val', FLAGS.dataset_dir, FLAGS.num_readers,
+          FLAGS.batch_size, FLAGS.num_preprocessing_threads)
       target_images, target_labels = provide_batch_fn()(
           FLAGS.target_dataset, 'train', FLAGS.dataset_dir, FLAGS.num_readers,
           FLAGS.batch_size, FLAGS.num_preprocessing_threads)
@@ -256,6 +259,8 @@ def main(_):
           source_images,
           source_labels,
           domain_selection_mask,
+          source_val_images,
+          source_val_labels,
           target_images,
           target_labels,
           FLAGS.similarity_loss,
