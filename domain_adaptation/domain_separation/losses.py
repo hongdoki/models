@@ -106,7 +106,7 @@ def mmd_loss(source_samples, target_samples, weight, scope=None):
   return loss_value
 
 
-def correlation_loss(source_samples, target_samples, weight, scope='losses'):
+def correlation_loss(source_samples, target_samples, weight, scope=None):
   """Adds a similarity loss term, the correlation between two representations.
 
   Args:
@@ -132,7 +132,7 @@ def correlation_loss(source_samples, target_samples, weight, scope='losses'):
 
   assert_op = tf.Assert(tf.is_finite(corr_loss), [corr_loss])
   with tf.control_dependencies([assert_op]):
-    tag = 'Correlation Loss'
+    tag = 'losses/Correlation Loss'
     if scope:
       tag = scope + tag
     tf.summary.scalar(tag, corr_loss)
