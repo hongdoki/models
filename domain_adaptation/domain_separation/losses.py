@@ -106,7 +106,7 @@ def mmd_loss(source_samples, target_samples, weight, scope=None):
   return loss_value
 
 
-def correlation_loss(source_samples, target_samples, weight, scope=None):
+def correlation_loss(source_samples, target_samples, weight, scope='losses'):
   """Adds a similarity loss term, the correlation between two representations.
 
   Args:

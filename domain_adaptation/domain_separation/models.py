@@ -645,10 +645,7 @@ def suanet(images,
            prefix='model',
            code_size=256,
            is_training=True,
-           augmentation_function=None,
-           img_shape=None,
-           new_shape=None,
-           image_summary=False):
+           batch_norm_params=None):
     """model based on AlexNet with fewer parameter (designed by kilho kim)"""
 
     from tensorflow.contrib import layers
