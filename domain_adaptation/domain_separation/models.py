@@ -116,6 +116,12 @@ def suanet_encoder(images, code_size, batch_norm_params=None, weight_decay=1e-4)
     _, code = suanet(images=images, code_size=code_size, weight_decay=weight_decay, encoder=True)
     return code
 
+
+def resnet_v2_18_encoder(images, code_size, batch_norm_params=None, weight_decay=1e-4):
+    """Encodes the ginve images to codes using ResNet-18"""
+    _, code = resnet_v2_18(images, encoder=True, code_size=code_size, weight_decay=weight_decay)
+    return code
+
 ################################################################################
 # DECODERS
 ################################################################################
@@ -691,14 +697,13 @@ def suanet(images,
                 end_points['conv2'] = layers.conv2d(end_points['pool1'], 256, [5, 5], scope='conv2')
                 end_points['pool2'] = layers_lib.max_pool2d(end_points['conv2'], [3, 3], 2, scope='pool2')
                 end_points['conv3'] = layers.conv2d(end_points['pool2'], emb_size, [3, 3], scope='conv3')
-                filter_n_stride_height = end_points['conv3'].get_shape()[0]
-                filter_n_stride_width = end_points['conv3'].get_shape()[1]
+                filter_n_stride_height = end_points['conv3'].get_shape()[1]
+                filter_n_stride_width = end_points['conv3'].get_shape()[2]
                 end_points['pool3'] = layers_lib.max_pool2d(end_points['conv3'],
                                                             [filter_n_stride_height, filter_n_stride_width],
                                                             [filter_n_stride_height, filter_n_stride_width],
                                                             scope='pool3')
                 end_points['flatten'] = slim.flatten(end_points['pool3'], scope='flatten')
-
         return end_points
 
     with slim.arg_scope(suanet_v2_arg_scope()):
@@ -710,3 +715,38 @@ def suanet(images,
                   end_points['flatten'], num_classes, weights_regularizer=slim.l2_regularizer(weight_decay)
                 ,activation_fn=None, scope='fc1')
             return logits, end_points
+
+
+def resnet_v2_18(images,
+                 num_classes=2,
+                 encoder=False,
+                 is_training=True,
+                 weight_decay=1e-4,
+                 prefix='model',
+                 code_size=256):
+    """ResNet-18 model"""
+    from tensorflow.contrib.slim.nets import resnet_v2 as rv2
+    resnet_v2 = rv2.resnet_v2
+    resnet_v2_block = rv2.resnet_v2_block
+
+    inputs = tf.cast(images, tf.float32)
+    blocks = [
+        resnet_v2_block('block1', base_depth=64, num_units=2, stride=2),
+        resnet_v2_block('block2', base_depth=128, num_units=2, stride=2),
+        resnet_v2_block('block3', base_depth=256, num_units=2, stride=2),
+        resnet_v2_block('block4', base_depth=512, num_units=2, stride=2),
+    ]
+
+    net, end_points = resnet_v2(inputs, blocks, num_classes=None,
+                                is_training=is_training, global_pool=True,
+                                output_stride=None, include_root_block=True,
+                                scope='resnet_v2')
+
+    end_points['flatten'] = slim.flatten(net, scope='flatten')
+    if encoder:
+        return None, end_points
+    else:
+        logits = slim.fully_connected(
+            end_points['flatten'], num_classes, weights_regularizer=slim.l2_regularizer(weight_decay)
+            , activation_fn=None, scope='fc1')
+        return logits, end_points
