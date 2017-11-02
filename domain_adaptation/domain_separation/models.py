@@ -722,6 +722,7 @@ def resnet_v2_18(images,
                  encoder=False,
                  is_training=True,
                  weight_decay=1e-4,
+                 batch_norm_params=None,
                  prefix='model',
                  code_size=256):
     """ResNet-18 model"""
